@@ -298,9 +298,12 @@ onSnapshot(query(collection(db,"categories"),orderBy("name")),snap=>{
 });
 
 // ===== FILE UPLOAD =====
+let _fileInputsReady=false;
 function setupFileInputs(){
+  if(_fileInputsReady)return;
   const fc=document.getElementById("fcam"),fg=document.getElementById("fgal");
-  if(!fc)return;
+  if(!fc||!fg)return;
+  _fileInputsReady=true;
   const proc=async(f,which)=>{
     if(!f)return;
     // Show uploading state
@@ -434,7 +437,7 @@ function render(){
     else if(view==="adminFuel")root.innerHTML=rFuelRates();
     else if(view==="adminGeneral")root.innerHTML=rGeneral();
   }catch(e){root.innerHTML=`<div style="color:var(--rd);padding:20px;font-size:13px">Error: ${e.message}</div>`;console.error(e);}
-  setTimeout(()=>{setupFileInputs();updateUA();},50);
+  setTimeout(()=>{updateUA();},50);
 }
 
 // ===== PAGES =====
@@ -1131,6 +1134,8 @@ window.submitPC=async()=>{
   }catch(e){toast("Ralat! Cuba lagi.","err");btn.disabled=false;btn.textContent="Hantar Claim";}
 };
 
+// Setup file inputs ONCE
+setupFileInputs();
 render();
 </script>
 </body>
