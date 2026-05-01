@@ -87,7 +87,7 @@ select.inp option{background:#fff;color:var(--t1)}
 .stat-l{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px}
 .chart-card{background:var(--card);border-radius:16px;padding:18px;margin-bottom:13px;box-shadow:var(--shadow);border:1px solid var(--b1)}
 .chart-title{font-size:14px;font-weight:600;color:var(--t1);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
-.bar-wrap{display:flex;align-items:flex-end;gap:5px;height:72px;margin-bottom:6px}
+.bar-wrap{display:flex;align-items:flex-end;gap:5px;height:90px;margin-bottom:8px;padding-top:20px}
 .bar{flex:1;background:linear-gradient(180deg,var(--ac),var(--ac2));border-radius:4px 4px 0 0;min-height:2px;transition:.3s}
 .bar.pc{background:linear-gradient(180deg,#7c3aed,var(--or))}
 .bar-labels{display:flex;gap:5px}
@@ -95,7 +95,7 @@ select.inp option{background:#fff;color:var(--t1)}
 .pch{background:linear-gradient(135deg,#5b3ff8,#7c63ff);border-radius:17px;padding:18px;margin-bottom:13px;color:#fff;position:relative;overflow:hidden;box-shadow:0 4px 18px rgba(91,63,248,0.25)}
 .pch::before{content:"";position:absolute;top:-40px;right:-40px;width:110px;height:110px;background:rgba(255,255,255,.1);border-radius:50%}
 .pch-lbl{font-size:11px;font-weight:600;opacity:.8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px}
-.pch-amt{font-size:30px;font-weight:700;margin-bottom:3px}
+.pch-amt{font-size:30px;font-weight:700;margin-bottom:3px}.pch-amt.neg{color:#fca5a5}
 .pch-sub{font-size:11px;opacity:.7}
 .prof-card{background:linear-gradient(135deg,var(--ac),var(--ac2));border-radius:17px;padding:18px;margin-bottom:13px;color:#fff;box-shadow:0 4px 18px rgba(91,63,248,0.22)}
 .prof-avatar{width:48px;height:48px;background:rgba(255,255,255,.25);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;margin-bottom:9px}
@@ -225,7 +225,7 @@ let filt="all",pcFilt="all",bnav=0;
 let receipt=null,receipt2=null;
 let expanded=null,rejectFor=null;
 let deferredPrompt=null,editingUser=null;
-let filterMode="month",filterMonth=new Date().getMonth()+1,filterYear=new Date().getFullYear();
+let filterMode="month",filterMonth=new Date().getMonth()+1,filterYear=new Date().getFullYear(),chartMode="6bulan",chartHalf="first";
 let swUpdateAvailable=false;
 const receiptMap={};
 
@@ -350,7 +350,7 @@ function restoreFormVals(type,f){
 // ===== HELPERS =====
 function toast(m,t="ok"){const el=document.getElementById("toast");el.textContent=m;el.classList.add("show");el.style.background=t==="err"?"#dc2626":"#1a1a2e";setTimeout(()=>el.classList.remove("show"),3000);}
 function getCU(){if(!session||session.type!=="user")return null;return users.find(u=>u.name===session.name)||null;}
-function fmtRM(v){return"RM "+(parseFloat(v)||0).toFixed(2);}
+function fmtRM(v){const n=parseFloat(v)||0;return(n<0?"-RM "+Math.abs(n).toFixed(2):"RM "+n.toFixed(2));}
 function fmtDate(d){if(!d)return"";const p=d.split("-");return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:d;}
 function getMonths(){return["Jan","Feb","Mac","Apr","Mei","Jun","Jul","Ogs","Sep","Okt","Nov","Dis"];}
 function parseTS(ts){
@@ -644,14 +644,25 @@ function rAdmin(){
   // Bar chart
   const months=getMonths();
   const barData=[];
-  for(let i=5;i>=0;i--){
-    const d=new Date();d.setMonth(d.getMonth()-i);
-    const m=d.getMonth()+1,y=d.getFullYear();
-    const t=otherC.filter(c=>{
-      if(!c.submittedAt)return false;
-      const cd=parseTS(c.submittedAt);return cd&&cd.getMonth()+1===m&&cd.getFullYear()===y&&c.status==="approved";
-    }).reduce((s,c)=>s+(c.amount||0),0);
-    barData.push({label:months[m-1],total:t});
+  if(chartMode==="6bulan"){
+    const startM=chartHalf==="first"?1:7;
+    for(let i=0;i<6;i++){
+      const m=startM+i,y=filterYear;
+      const t=otherC.filter(c=>{
+        if(!c.submittedAt)return false;
+        const cd=parseTS(c.submittedAt);return cd&&cd.getMonth()+1===m&&cd.getFullYear()===y&&c.status==="approved";
+      }).reduce((s,c)=>s+(c.amount||0),0);
+      barData.push({label:months[m-1],total:t});
+    }
+  }else{
+    // Bulanan - show all 12 months for selected year
+    for(let m=1;m<=12;m++){
+      const t=otherC.filter(c=>{
+        if(!c.submittedAt)return false;
+        const cd=parseTS(c.submittedAt);return cd&&cd.getMonth()+1===m&&cd.getFullYear()===filterYear&&c.status==="approved";
+      }).reduce((s,c)=>s+(c.amount||0),0);
+      barData.push({label:months[m-1],total:t});
+    }
   }
   const maxB=Math.max(...barData.map(b=>b.total),1);
   return`<div class="app">
@@ -677,8 +688,29 @@ function rAdmin(){
     <button class="btn bg2 bsm" onclick="goV('adminSettings')">⚙️ Tetapan</button>
   </div>
   <div class="chart-card">
-    <div class="chart-title"><span>Claim Diluluskan (6 Bulan)</span></div>
-    <div class="bar-wrap">${barData.map(b=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center"><div class="bar" style="height:${Math.max(3,Math.round((b.total/maxB)*66))}px" title="${fmtRM(b.total)}"></div></div>`).join("")}</div>
+    <div class="chart-title">
+      <span>Claim Diluluskan</span>
+      <div style="display:flex;gap:5px">
+        <select onchange="setChartMode(this.value)" class="inp" style="width:auto;padding:5px 8px;font-size:12px">
+          <option value="6bulan" ${chartMode==="6bulan"?"selected":""}>6 Bulan</option>
+          <option value="bulanan" ${chartMode==="bulanan"?"selected":""}>Bulanan</option>
+        </select>
+        ${chartMode==="6bulan"?`<select onchange="setChartHalf(this.value)" class="inp" style="width:auto;padding:5px 8px;font-size:12px">
+          <option value="first" ${chartHalf==="first"?"selected":""}>Jan-Jun</option>
+          <option value="second" ${chartHalf==="second"?"selected":""}>Jul-Dis</option>
+        </select>`:`<select onchange="setFYear(this.value)" class="inp" style="width:auto;padding:5px 8px;font-size:12px">
+          ${[2024,2025,2026,2027].map(y=>`<option value="${y}" ${filterYear===y?"selected":""}>${y}</option>`).join("")}
+        </select>`}
+      </div>
+    </div>
+    <div class="bar-wrap">${barData.map(b=>{
+      const h=b.total>0?Math.max(16,Math.round((b.total/maxB)*70)):3;
+      const op=b.total>0?1:0.15;
+      return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+        ${b.total>0?`<div style="font-size:8px;color:var(--ac);font-weight:700;margin-bottom:3px;text-align:center">RM${b.total.toFixed(0)}</div>`:'<div style="height:11px"></div>'}
+        <div class="bar" style="width:100%;height:${h}px;opacity:${op};border-radius:4px 4px 0 0" title="${fmtRM(b.total)}"></div>
+      </div>`;
+    }).join("")}</div>
     <div class="bar-labels">${barData.map(b=>`<span>${b.label}</span>`).join("")}</div>
   </div>
   <div class="card">${mfiltHtml()}
@@ -884,6 +916,8 @@ function cCard(c,isAdmin){
 
 // ===== ACTIONS =====
 window.setTab=t=>{ltab=t;render();};
+window.setChartMode=m=>{chartMode=m;render();};
+window.setChartHalf=h=>{chartHalf=h;render();};
 window.setAtab=t=>{atab=t;render();};
 window.setFilt=f=>{filt=f;render();};
 window.setPCFilt=f=>{pcFilt=f;render();};
@@ -949,7 +983,7 @@ window.doLogin=()=>{
 
 window.doApprove=async(id,budget,amount)=>{
   await updateDoc(doc(db,"claims",id),{status:"approved",reviewNote:""});
-  if(budget==="pettycash"){const nb=Math.max(0,(pc.balance||0)-parseFloat(amount));await setDoc(doc(db,"settings","pettycash"),{...pc,balance:nb});}
+  if(budget==="pettycash"){const nb=(pc.balance||0)-parseFloat(amount);await setDoc(doc(db,"settings","pettycash"),{...pc,balance:nb});}
   toast("✓ Claim diluluskan!");expanded=null;render();
 };
 window.doReject=async id=>{
@@ -958,7 +992,21 @@ window.doReject=async id=>{
   toast("Claim ditolak.");expanded=null;rejectFor=null;render();
 };
 window.togPaid=async(id,isPaid)=>{await updateDoc(doc(db,"claims",id),{paid:!isPaid});toast(!isPaid?"💚 Ditandakan Paid":"Ditandakan Unpaid");};
-window.delClaim=async id=>{if(!confirm("Padam claim ini?"))return;await deleteDoc(doc(db,"claims",id));delete receiptMap[id];toast("Claim dipadam.");expanded=null;render();};
+window.delClaim=async id=>{
+  if(!confirm("Padam claim ini?"))return;
+  const c=claims.find(x=>x.id===id);
+  await deleteDoc(doc(db,"claims",id));
+  delete receiptMap[id];
+  // Restore petty cash if approved PC claim
+  if(c&&(c.claimType==="pettycash"||c.budget==="pettycash")&&c.status==="approved"){
+    const restored=(pc.balance||0)+(c.amount||0);
+    await setDoc(doc(db,"settings","pettycash"),{...pc,balance:restored});
+    toast("Claim dipadam. Baki PC dipulihkan: "+fmtRM(restored));
+  }else{
+    toast("Claim dipadam.");
+  }
+  expanded=null;render();
+};
 
 window.saveFullName=async()=>{
   const name=document.getElementById("pfName")?.value?.trim();
@@ -1052,7 +1100,7 @@ window.submitFuel=async()=>{
 window.submitPC=async()=>{
   const date=document.getElementById("fDate")?.value,amount=document.getElementById("fAmt")?.value,purpose=document.getElementById("fPurpose")?.value,category=document.getElementById("fCat")?.value||"",notes=document.getElementById("fNotes")?.value||"";
   if(!date||!amount||!purpose){toast("Sila isi tarikh, jumlah & tujuan!","err");return;}
-  if(parseFloat(amount)>(pc.balance||0)){toast("Jumlah melebihi baki petty cash!","err");return;}
+
   const btn=document.getElementById("submitBtn");btn.disabled=true;btn.textContent="Menghantar...";
   try{
     await addDoc(collection(db,"claims"),{user:session.name,claimType:"pettycash",budget:"pettycash",date,amount:parseFloat(amount),purpose,category,notes,receipt:receipt||null,status:"pending",paid:false,submittedAt:serverTimestamp(),reviewNote:""});
