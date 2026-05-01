@@ -298,66 +298,122 @@ onSnapshot(query(collection(db,"categories"),orderBy("name")),snap=>{
 });
 
 // ===== FILE UPLOAD =====
-let _fileInputsReady=false;
-function setupFileInputs(){
-  if(_fileInputsReady)return;
-  const fc=document.getElementById("fcam"),fg=document.getElementById("fgal");
-  if(!fc||!fg)return;
-  _fileInputsReady=true;
-  const proc=async(f,which)=>{
-    if(!f)return;
-    // Show uploading state
-    const areaId=which===2?"ua2":"ua1";
-    const area=document.getElementById(areaId);
-    if(area)area.innerHTML=`<div style="text-align:center;padding:20px;color:var(--t2)"><div style="font-size:24px;margin-bottom:8px">⏳</div><div style="font-size:13px">Menghantar gambar...</div></div>`;
-    try{
-      // Determine folder based on claim type
-      const months=["Jan","Feb","Mac","Apr","Mei","Jun","Jul","Ogs","Sep","Okt","Nov","Dis"];
-      const now=new Date();
-      const monthStr=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+months[now.getMonth()];
-      let typeFolder="resit";
-      if(claimType==="fuel")typeFolder="minyak_toll";
-      else if(claimType==="pettycash")typeFolder="petty_cash";
-      const folder=`asfa_claim/${typeFolder}/${monthStr}`;
-      const formData=new FormData();
-      formData.append("file",f);
-      formData.append("upload_preset","asfa_claim");
-      formData.append("folder",folder);
-      const res=await fetch("https://api.cloudinary.com/v1_1/drngqgpqf/image/upload",{method:"POST",body:formData,mode:"cors"});
-      const data=await res.json();
-      if(data.secure_url){
-        if(which===2)receipt2=data.secure_url;else receipt=data.secure_url;
-        updateUA();
-      }else{
-        const errMsg=data.error?.message||"Gagal upload gambar!";
-        console.error("Cloudinary error:",data);
-        toast(errMsg,"err");
-        if(area)area.innerHTML=`<div class="up-row"><div class="up-btn" onclick="trigUp(${which},'cam')"><div class="up-icon">📷</div><div class="up-lbl">Kamera</div></div><div class="up-btn" onclick="trigUp(${which},'gal')"><div class="up-icon">🖼️</div><div class="up-lbl">Galeri</div></div></div>`;
-      }
-    }catch(e){
-      toast("Ralat upload! Cuba lagi.","err");
-      if(area)area.innerHTML=`<div class="up-row"><div class="up-btn" onclick="trigUp(${which},'cam')"><div class="up-icon">📷</div><div class="up-lbl">Kamera</div></div><div class="up-btn" onclick="trigUp(${which},'gal')"><div class="up-icon">🖼️</div><div class="up-lbl">Galeri</div></div></div>`;
-    }
+// Upload receipts stored as base64 locally, uploaded to Cloudinary on submit
+let _receiptPending={1:null,2:null}; // store compressed base64 temporarily
+
+function compressImage(file,cb){
+  const r=new FileReader();
+  r.onload=ev=>{
+    const img=new Image();
+    img.onload=()=>{
+      const c=document.createElement("canvas");
+      let w=img.width,h=img.height,M=1200;
+      if(w>M){h=h*M/w;w=M;}if(h>M){w=w*M/h;h=M;}
+      c.width=w;c.height=h;c.getContext("2d").drawImage(img,0,0,w,h);
+      cb(c.toDataURL("image/jpeg",0.8));
+    };
+    img.src=ev.target.result;
   };
-  fc.onchange=e=>{proc(e.target.files[0],parseInt(fc.dataset.which||"1"));fc.value="";};
-  fg.onchange=e=>{proc(e.target.files[0],parseInt(fg.dataset.which||"1"));fg.value="";};
+  r.readAsDataURL(file);
 }
+
+async function uploadToCloudinary(base64data,claimTypeStr){
+  const months=["Jan","Feb","Mac","Apr","Mei","Jun","Jul","Ogs","Sep","Okt","Nov","Dis"];
+  const now=new Date();
+  const monthStr=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+months[now.getMonth()];
+  let typeFolder="resit";
+  if(claimTypeStr==="fuel")typeFolder="minyak_toll";
+  else if(claimTypeStr==="pettycash")typeFolder="petty_cash";
+  const folder=`asfa_claim/${typeFolder}/${monthStr}`;
+  const formData=new FormData();
+  // Convert base64 to blob
+  const res2=await fetch(base64data);
+  const blob=await res2.blob();
+  formData.append("file",blob,"receipt.jpg");
+  formData.append("upload_preset","asfa_claim");
+  formData.append("folder",folder);
+  const res=await fetch("https://api.cloudinary.com/v1_1/drngqgpqf/image/upload",{method:"POST",body:formData});
+  const data=await res.json();
+  if(data.secure_url)return data.secure_url;
+  throw new Error(data.error?.message||"Upload failed");
+}
+
+function updateUA(){
+  const a1=document.getElementById("ua1");
+  if(a1){
+    if(receipt){
+      a1.innerHTML=`<img src="${receipt}" style="width:100%;border-radius:9px;margin-bottom:8px;max-height:180px;object-fit:cover"/>
+      <div style="display:flex;gap:7px">
+        <button class="bdl" onclick="dlImg(1)">⬇ Download</button>
+        <button class="btn bg2 bsm" onclick="clrR(1)">Buang</button>
+      </div>`;
+    }else{
+      a1.innerHTML=`<div class="up-row">
+        <div class="up-btn" onclick="trigUp(1,'cam')"><div class="up-icon">📷</div><div class="up-lbl">Kamera</div></div>
+        <div class="up-btn" onclick="trigUp(1,'gal')"><div class="up-icon">🖼️</div><div class="up-lbl">Galeri</div></div>
+      </div>`;
+    }
+  }
+  const a2=document.getElementById("ua2");
+  if(a2){
+    if(receipt2){
+      a2.innerHTML=`<img src="${receipt2}" style="width:100%;border-radius:9px;margin-bottom:8px;max-height:180px;object-fit:cover"/>
+      <div style="display:flex;gap:7px">
+        <button class="bdl" onclick="dlImg(2)">⬇ Download</button>
+        <button class="btn bg2 bsm" onclick="clrR(2)">Buang</button>
+      </div>`;
+    }else{
+      a2.innerHTML=`<div class="up-row">
+        <div class="up-btn" onclick="trigUp(2,'cam')"><div class="up-icon">📷</div><div class="up-lbl">Kamera</div></div>
+        <div class="up-btn" onclick="trigUp(2,'gal')"><div class="up-icon">🖼️</div><div class="up-lbl">Galeri</div></div>
+      </div>`;
+    }
+  }
+}
+
 window.trigUp=(which,mode)=>{
   const fc=document.getElementById("fcam"),fg=document.getElementById("fgal");
   if(!fc||!fg)return;
-  if(mode==="cam"){fc.dataset.which=which;fc.click();}else{fg.dataset.which=which;fg.click();}
+  if(mode==="cam"){fc.dataset.which=which;fc.click();}
+  else{fg.dataset.which=which;fg.click();}
 };
-function updateUA(){
-  const a1=document.getElementById("ua1");
-  if(a1){if(receipt){a1.innerHTML=`<img src="${receipt}" style="width:100%;border-radius:9px;margin-bottom:8px;max-height:170px;object-fit:cover"/><div style="display:flex;gap:7px"><button class="bdl" onclick="dlImg(1)">⬇ Download</button><button class="btn bg2 bsm" onclick="clrR(1)">Buang</button></div>`;}
-  else{a1.innerHTML=`<div class="up-row"><div class="up-btn" onclick="trigUp(1,'cam')"><div class="up-icon">📷</div><div class="up-lbl">Kamera</div></div><div class="up-btn" onclick="trigUp(1,'gal')"><div class="up-icon">🖼️</div><div class="up-lbl">Galeri</div></div></div>`;}}
-  const a2=document.getElementById("ua2");
-  if(a2){if(receipt2){a2.innerHTML=`<img src="${receipt2}" style="width:100%;border-radius:9px;margin-bottom:8px;max-height:160px;object-fit:cover"/><div style="display:flex;gap:7px"><button class="bdl" onclick="dlImg(2)">⬇ Download</button><button class="btn bg2 bsm" onclick="clrR(2)">Buang</button></div>`;}
-  else{a2.innerHTML=`<div class="up-row"><div class="up-btn" onclick="trigUp(2,'cam')"><div class="up-icon">📷</div><div class="up-lbl">Kamera</div></div><div class="up-btn" onclick="trigUp(2,'gal')"><div class="up-icon">🖼️</div><div class="up-lbl">Galeri</div></div></div>`;}}
+
+
+function setupFileInputs(){
+  const fc=document.getElementById("fcam"),fg=document.getElementById("fgal");
+  if(!fc||!fg)return;
+  fc.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const which=parseInt(fc.dataset.which||"1");
+    compressImage(f,data=>{
+      if(which===2)receipt2=data;else receipt=data;
+      updateUA();
+    });
+    fc.value="";
+  };
+  fg.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const which=parseInt(fg.dataset.which||"1");
+    compressImage(f,data=>{
+      if(which===2)receipt2=data;else receipt=data;
+      updateUA();
+    });
+    fg.value="";
+  };
 }
+
 window.clrR=w=>{if(w===2)receipt2=null;else receipt=null;updateUA();};
-window.dlImg=w=>{const d=w===2?receipt2:receipt;if(!d)return;window.open(d,"_blank");};
-window.dlImgById=id=>{const d=receiptMap[id]||claims.find(c=>c.id===id)?.receipt;if(!d)return;window.open(d,"_blank");};
+window.dlImg=w=>{
+  const d=w===2?receipt2:receipt;
+  if(!d)return;
+  if(d.startsWith("http")){window.open(d,"_blank");}
+  else{const a=document.createElement("a");a.href=d;a.download="resit.jpg";a.click();}
+};
+window.dlImgById=id=>{
+  const d=receiptMap[id]||claims.find(c=>c.id===id)?.receipt;
+  if(!d)return;
+  window.open(d,"_blank");
+};
 
 // ===== SAVE FORM VALUES =====
 function saveFormVals(type){
@@ -437,7 +493,7 @@ function render(){
     else if(view==="adminFuel")root.innerHTML=rFuelRates();
     else if(view==="adminGeneral")root.innerHTML=rGeneral();
   }catch(e){root.innerHTML=`<div style="color:var(--rd);padding:20px;font-size:13px">Error: ${e.message}</div>`;console.error(e);}
-  setTimeout(()=>{updateUA();},50);
+  setTimeout(()=>{setupFileInputs();updateUA();},50);
 }
 
 // ===== PAGES =====
@@ -1107,7 +1163,9 @@ window.submitResit=async()=>{
   if(!date||!amount||!purpose){toast("Sila isi tarikh, jumlah & tujuan!","err");return;}
   const btn=document.getElementById("submitBtn");btn.disabled=true;btn.textContent="Menghantar...";
   try{
-    await addDoc(collection(db,"claims"),{user:session.name,claimType:"resit",budget:"other",date,amount:parseFloat(amount),purpose,category,notes,receipt:receipt||null,status:"pending",paid:false,submittedAt:serverTimestamp(),reviewNote:""});
+    let receiptUrl=null;
+    if(receipt){try{receiptUrl=await uploadToCloudinary(receipt,"resit");}catch(e){console.error("Upload err:",e);}}
+    await addDoc(collection(db,"claims"),{user:session.name,claimType:"resit",budget:"other",date,amount:parseFloat(amount),purpose,category,notes,receipt:receiptUrl,status:"pending",paid:false,submittedAt:serverTimestamp(),reviewNote:""});
     receipt=null;FS.resit={date:"",amount:"",cat:"",purpose:"",notes:""};view="claimSuccess";render();
   }catch(e){toast("Ralat! Cuba lagi.","err");btn.disabled=false;btn.textContent="Hantar Claim";}
 };
@@ -1118,7 +1176,10 @@ window.submitFuel=async()=>{
   const rate=fuelVehicle==="motor"?fuelRates.motor:fuelRates.kereta,fuelAmt=calcFuel(km,fuelVehicle,fuelDir),total=fuelAmt+(fuelType==="minyaktoll"?toll:0);
   const btn=document.getElementById("submitBtn");btn.disabled=true;btn.textContent="Menghantar...";
   try{
-    await addDoc(collection(db,"claims"),{user:session.name,claimType:"fuel",budget:"other",date,km,vehicle:fuelVehicle,direction:fuelDir,destination:dest,rate,fuelAmount:fuelAmt,tollAmount:fuelType==="minyaktoll"?toll:0,amount:total,purpose,category,notes,receipt:receipt||null,receipt2:fuelType==="minyaktoll"?(receipt2||null):null,hasToll:fuelType==="minyaktoll",status:"pending",paid:false,submittedAt:serverTimestamp(),reviewNote:""});
+    let receiptUrl=null,receipt2Url=null;
+    if(receipt){try{receiptUrl=await uploadToCloudinary(receipt,"fuel");}catch(e){console.error(e);}}
+    if(receipt2&&fuelType==="minyaktoll"){try{receipt2Url=await uploadToCloudinary(receipt2,"fuel");}catch(e){console.error(e);}}
+    await addDoc(collection(db,"claims"),{user:session.name,claimType:"fuel",budget:"other",date,km,vehicle:fuelVehicle,direction:fuelDir,destination:dest,rate,fuelAmount:fuelAmt,tollAmount:fuelType==="minyaktoll"?toll:0,amount:total,purpose,category,notes,receipt:receiptUrl,receipt2:receipt2Url,hasToll:fuelType==="minyaktoll",status:"pending",paid:false,submittedAt:serverTimestamp(),reviewNote:""});
     receipt=null;receipt2=null;FS.fuel={date:"",km:"",dest:"",cat:"",purpose:"",notes:"",toll:""};view="claimSuccess";render();
   }catch(e){toast("Ralat! Cuba lagi.","err");btn.disabled=false;btn.textContent="Hantar Claim";}
 };
@@ -1129,7 +1190,9 @@ window.submitPC=async()=>{
 
   const btn=document.getElementById("submitBtn");btn.disabled=true;btn.textContent="Menghantar...";
   try{
-    await addDoc(collection(db,"claims"),{user:session.name,claimType:"pettycash",budget:"pettycash",date,amount:parseFloat(amount),purpose,category,notes,receipt:receipt||null,status:"pending",paid:false,submittedAt:serverTimestamp(),reviewNote:""});
+    let receiptUrl=null;
+    if(receipt){try{receiptUrl=await uploadToCloudinary(receipt,"pettycash");}catch(e){console.error(e);}}
+    await addDoc(collection(db,"claims"),{user:session.name,claimType:"pettycash",budget:"pettycash",date,amount:parseFloat(amount),purpose,category,notes,receipt:receiptUrl,status:"pending",paid:false,submittedAt:serverTimestamp(),reviewNote:""});
     receipt=null;FS.pc={date:"",amount:"",cat:"",purpose:"",notes:""};view="claimSuccess";render();
   }catch(e){toast("Ralat! Cuba lagi.","err");btn.disabled=false;btn.textContent="Hantar Claim";}
 };
