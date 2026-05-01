@@ -320,13 +320,15 @@ function setupFileInputs(){
       formData.append("file",f);
       formData.append("upload_preset","asfa_claim");
       formData.append("folder",folder);
-      const res=await fetch("https://api.cloudinary.com/v1_1/drngqgpqf/image/upload",{method:"POST",body:formData});
+      const res=await fetch("https://api.cloudinary.com/v1_1/drngqgpqf/image/upload",{method:"POST",body:formData,mode:"cors"});
       const data=await res.json();
       if(data.secure_url){
         if(which===2)receipt2=data.secure_url;else receipt=data.secure_url;
         updateUA();
       }else{
-        toast("Gagal upload gambar!","err");
+        const errMsg=data.error?.message||"Gagal upload gambar!";
+        console.error("Cloudinary error:",data);
+        toast(errMsg,"err");
         if(area)area.innerHTML=`<div class="up-row"><div class="up-btn" onclick="trigUp(${which},'cam')"><div class="up-icon">📷</div><div class="up-lbl">Kamera</div></div><div class="up-btn" onclick="trigUp(${which},'gal')"><div class="up-icon">🖼️</div><div class="up-lbl">Galeri</div></div></div>`;
       }
     }catch(e){
