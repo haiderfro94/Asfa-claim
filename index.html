@@ -217,6 +217,7 @@ let fuelType="minyak",fuelVehicle="motor",fuelDir="sehala";
 
 // ===== STATE =====
 let claims=[],users=[],categories=[],adminCreds={username:"admin",password:"admin123"};
+let _fileInputsReady=false;
 let pc={balance:0,allowedUsers:[],enabled:false};
 let fuelRates={motor:0.45,kereta:0.60};
 let settings={budgetEnabled:false};
@@ -299,8 +300,6 @@ onSnapshot(query(collection(db,"categories"),orderBy("name")),snap=>{
 
 // ===== FILE UPLOAD =====
 // Upload receipts stored as base64 locally, uploaded to Cloudinary on submit
-let _receiptPending={1:null,2:null}; // store compressed base64 temporarily
-
 function compressImage(file,cb){
   const r=new FileReader();
   r.onload=ev=>{
@@ -493,7 +492,18 @@ function render(){
     else if(view==="adminFuel")root.innerHTML=rFuelRates();
     else if(view==="adminGeneral")root.innerHTML=rGeneral();
   }catch(e){root.innerHTML=`<div style="color:var(--rd);padding:20px;font-size:13px">Error: ${e.message}</div>`;console.error(e);}
-  setTimeout(()=>{setupFileInputs();updateUA();},50);
+  setTimeout(()=>{
+    setupFileInputs();
+    updateUA();
+    // Event delegation for ctype buttons
+    const grid=document.getElementById("ctypeGrid");
+    if(grid){
+      grid.onclick=e=>{
+        const btn=e.target.closest("[data-type]");
+        if(btn)startClaim(btn.dataset.type);
+      };
+    }
+  },50);
 }
 
 // ===== PAGES =====
@@ -546,7 +556,7 @@ function rDash(){
   const apv=filt2.filter(c=>c.status==="approved").reduce((s,c)=>s+(c.amount||0),0);
   const pend=filt2.filter(c=>c.status==="pending").length;
   const rej=filt2.filter(c=>c.status==="rejected").reduce((s,c)=>s+(c.amount||0),0);
-  const showPC=pc.allowedUsers?.includes(session.name);
+  const showPC=!!(pc.allowedUsers&&pc.allowedUsers.includes(session.name));
   const ini=(u?.fullName||session.name).split(" ").map(w=>w[0]).join("").substring(0,2).toUpperCase();
   return`<div class="app">
   <div class="prof-card"><div class="prof-avatar">${ini}</div>
@@ -610,13 +620,13 @@ function rProfile(){
 }
 
 function rSelect(){
-  const showPC=pc.allowedUsers?.includes(session.name)&&pc.enabled;
+  const showPC=!!(pc.allowedUsers&&pc.allowedUsers.includes(session.name)&&pc.enabled);
   return`<div class="app">
   <div class="page-title">Pilih Jenis Claim</div>
-  <div class="ctype-grid ${showPC?"has3":""}">
-    <div class="ctype-btn" onclick="startClaim('resit')"><div class="ctype-icon">🧾</div><div class="ctype-label">Claim Resit</div><div class="ctype-sub">Perbelanjaan umum</div></div>
-    <div class="ctype-btn" onclick="startClaim('fuel')"><div class="ctype-icon">⛽</div><div class="ctype-label">Minyak & Toll</div><div class="ctype-sub">Tuntutan perjalanan</div></div>
-    ${showPC?`<div class="ctype-btn" onclick="startClaim('pettycash')"><div class="ctype-icon">💰</div><div class="ctype-label">Petty Cash</div><div class="ctype-sub">Baki: ${fmtRM(pc.balance)}</div></div>`:""}
+  <div class="ctype-grid ${showPC?"has3":""}" id="ctypeGrid">
+    <div class="ctype-btn" data-type="resit"><div class="ctype-icon">🧾</div><div class="ctype-label">Claim Resit</div><div class="ctype-sub">Perbelanjaan umum</div></div>
+    <div class="ctype-btn" data-type="fuel"><div class="ctype-icon">⛽</div><div class="ctype-label">Minyak & Toll</div><div class="ctype-sub">Tuntutan perjalanan</div></div>
+    ${showPC?`<div class="ctype-btn" data-type="pettycash"><div class="ctype-icon">💰</div><div class="ctype-label">Petty Cash</div><div class="ctype-sub">Baki: ${fmtRM(pc.balance)}</div></div>`:""}
   </div></div>`;
 }
 
